@@ -4,48 +4,57 @@ on:
   push:
     branches:
       - main
-  pull_request:
-    branches:
-      - main
   workflow_dispatch:
-
-permissions:
-  id-token: write
-  contents: read
 
 jobs:
   terraform:
-    name: Terraform Apply
+    name: Terraform Apply with Debugging
     runs-on: ubuntu-latest
 
+    env:
+      ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+      ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      TF_LOG: DEBUG  # Enables detailed Terraform logs
+      TF_LOG_PATH: terraform-debug.log  # Logs will be saved in a file
+
     steps:
-    - name: Checkout Repository
-      uses: actions/checkout@v3
+      - name: Checkout Repository
+        uses: actions/checkout@v3
 
-    - name: Setup Terraform
-      uses: hashicorp/setup-terraform@v2
-      with:
-        terraform_version: latest
+      - name: Enable Debugging in GitHub Actions
+        run: echo "ACTIONS_RUNNER_DEBUG=true" >> $GITHUB_ENV
 
-    - name: Terraform Init
-      run: terraform init
+      - name: Install Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: latest
 
-    - name: Terraform Validate
-      run: terraform validate
+      - name: Terraform Init
+        run: terraform init
 
-    - name: Terraform Plan
-      run: terraform plan
-      env:
-        TF_VAR_azure_subscription_id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-        TF_VAR_azure_client_id: ${{ secrets.AZURE_CLIENT_ID }}
-        TF_VAR_azure_client_secret: ${{ secrets.AZURE_CLIENT_SECRET }}
-        TF_VAR_azure_tenant_id: ${{ secrets.AZURE_TENANT_ID }}
+      - name: Terraform Validate
+        run: terraform validate
 
-    - name: Terraform Apply
-      if: github.event_name == 'push'
-      run: terraform apply -auto-approve
-      env:
-        TF_VAR_azure_subscription_id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-        TF_VAR_azure_client_id: ${{ secrets.AZURE_CLIENT_ID }}
-        TF_VAR_azure_client_secret: ${{ secrets.AZURE_CLIENT_SECRET }}
-        TF_VAR_azure_tenant_id: ${{ secrets.AZURE_TENANT_ID }}
+      - name: Terraform Plan with Debugging
+        run: |
+          terraform plan -var="azure_subscription_id=${{ secrets.AZURE_SUBSCRIPTION_ID }}" \
+                         -var="azure_client_id=${{ secrets.AZURE_CLIENT_ID }}" \
+                         -var="azure_client_secret=${{ secrets.AZURE_CLIENT_SECRET }}" \
+                         -var="azure_tenant_id=${{ secrets.AZURE_TENANT_ID }}" | tee terraform-plan-output.log
+
+      - name: Save Terraform Plan Debug Logs
+        if: always()
+        run: cat terraform-plan-output.log
+
+      - name: Terraform Apply with Debugging
+        run: |
+          terraform apply -auto-approve -var="azure_subscription_id=${{ secrets.AZURE_SUBSCRIPTION_ID }}" \
+                                      -var="azure_client_id=${{ secrets.AZURE_CLIENT_ID }}" \
+                                      -var="azure_client_secret=${{ secrets.AZURE_CLIENT_SECRET }}" \
+                                      -var="azure_tenant_id=${{ secrets.AZURE_TENANT_ID }}" | tee terraform-apply-output.log
+
+      - name: Save Terraform Apply Debug Logs
+        if: always()
+        run: cat terraform-apply-output.log

@@ -28,6 +28,9 @@ jobs:
       - name: Terraform Validate
         run: terraform validate
 
+      - name: Debugging - Check if terraform.tfvars exists
+        run: ls -l terraform.tfvars
+
       - name: Terraform Plan
         run: terraform plan -var-file="terraform.tfvars"
         env:

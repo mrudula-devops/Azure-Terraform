@@ -1,4 +1,4 @@
-name: Deploy AKS
+name: Deploy AKS with Debugging
 
 on:
   push:
@@ -16,15 +16,12 @@ jobs:
       ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
       ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
       ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-      TF_LOG: DEBUG  # Enables detailed Terraform logs
-      TF_LOG_PATH: terraform-debug.log  # Logs will be saved in a file
+      TF_LOG: DEBUG  # Enables Terraform debugging logs
+      ACTIONS_RUNNER_DEBUG: true  # Enables GitHub Actions debugging logs
 
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v3
-
-      - name: Enable Debugging in GitHub Actions
-        run: echo "ACTIONS_RUNNER_DEBUG=true" >> $GITHUB_ENV
 
       - name: Install Terraform
         uses: hashicorp/setup-terraform@v2
@@ -32,29 +29,32 @@ jobs:
           terraform_version: latest
 
       - name: Terraform Init
-        run: terraform init
+        run: |
+          terraform init | tee terraform-init.log
+          cat terraform-init.log  # Display logs for debugging
 
       - name: Terraform Validate
-        run: terraform validate
+        run: |
+          terraform validate | tee terraform-validate.log
+          cat terraform-validate.log  # Display logs for debugging
 
-      - name: Terraform Plan with Debugging
+      - name: Terraform Plan
         run: |
           terraform plan -var="azure_subscription_id=${{ secrets.AZURE_SUBSCRIPTION_ID }}" \
                          -var="azure_client_id=${{ secrets.AZURE_CLIENT_ID }}" \
                          -var="azure_client_secret=${{ secrets.AZURE_CLIENT_SECRET }}" \
-                         -var="azure_tenant_id=${{ secrets.AZURE_TENANT_ID }}" | tee terraform-plan-output.log
+                         -var="azure_tenant_id=${{ secrets.AZURE_TENANT_ID }}" | tee terraform-plan.log
+          cat terraform-plan.log  # Display logs for debugging
+        continue-on-error: true  # Prevents pipeline from stopping
 
-      - name: Save Terraform Plan Debug Logs
-        if: always()
-        run: cat terraform-plan-output.log
-
-      - name: Terraform Apply with Debugging
+      - name: Terraform Apply
         run: |
           terraform apply -auto-approve -var="azure_subscription_id=${{ secrets.AZURE_SUBSCRIPTION_ID }}" \
                                       -var="azure_client_id=${{ secrets.AZURE_CLIENT_ID }}" \
                                       -var="azure_client_secret=${{ secrets.AZURE_CLIENT_SECRET }}" \
-                                      -var="azure_tenant_id=${{ secrets.AZURE_TENANT_ID }}" | tee terraform-apply-output.log
+                                      -var="azure_tenant_id=${{ secrets.AZURE_TENANT_ID }}" | tee terraform-apply.log
+        continue-on-error: true  # Ensures Terraform Apply logs are captured even if it fails
 
-      - name: Save Terraform Apply Debug Logs
-        if: always()
-        run: cat terraform-apply-output.log
+      - name: Display Terraform Apply Logs
+        if: always()  # Always run this step even if Apply fails
+        run: cat terraform-apply.log || echo "Terraform Apply log file not found!"

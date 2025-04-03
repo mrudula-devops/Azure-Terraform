@@ -1,42 +1,51 @@
-name: Deploy AKS with Terraform
+name: Deploy AKS
 
 on:
   push:
     branches:
       - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
 
 permissions:
+  id-token: write
   contents: read
 
 jobs:
   terraform:
-    name: Deploy AKS
+    name: Terraform Apply
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+    - name: Checkout Repository
+      uses: actions/checkout@v3
 
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v2
-        with:
-          terraform_version: 1.6.0
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v2
+      with:
+        terraform_version: latest
 
-      - name: Terraform Init
-        run: terraform init
+    - name: Terraform Init
+      run: terraform init
 
-      - name: Terraform Plan
-        run: terraform plan
-        env:
-          ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
-          ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
-          ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
-          ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+    - name: Terraform Validate
+      run: terraform validate
 
-      - name: Terraform Apply
-        run: terraform apply -auto-approve
-        env:
-          ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
-          ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
-          ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
-          ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+    - name: Terraform Plan
+      run: terraform plan
+      env:
+        TF_VAR_azure_subscription_id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+        TF_VAR_azure_client_id: ${{ secrets.AZURE_CLIENT_ID }}
+        TF_VAR_azure_client_secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+        TF_VAR_azure_tenant_id: ${{ secrets.AZURE_TENANT_ID }}
+
+    - name: Terraform Apply
+      if: github.event_name == 'push'
+      run: terraform apply -auto-approve
+      env:
+        TF_VAR_azure_subscription_id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+        TF_VAR_azure_client_id: ${{ secrets.AZURE_CLIENT_ID }}
+        TF_VAR_azure_client_secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+        TF_VAR_azure_tenant_id: ${{ secrets.AZURE_TENANT_ID }}

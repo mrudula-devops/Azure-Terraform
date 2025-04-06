@@ -1,4 +1,4 @@
-name: Deploy to Azure AKS
+name: 'Terraform Deploy to Azure using OIDC'
 
 on:
   push:
@@ -6,56 +6,38 @@ on:
       - main
 
 permissions:
-  id-token: write       # Required for OIDC login
-  contents: read        # Required to checkout code
+  id-token: write
+  contents: read
 
 jobs:
-  deploy:
+  terraform:
+    name: 'Deploy Infrastructure'
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout Code
+    - name: Checkout repository
       uses: actions/checkout@v3
 
-    - name: Login to Azure
+    - name: Log in to Azure using OIDC
       uses: azure/login@v1
       with:
         client-id: ${{ secrets.AZURE_CLIENT_ID }}
         tenant-id: ${{ secrets.AZURE_TENANT_ID }}
         subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-        enable-AzPSSession: true
 
     - name: Set up Terraform
-      uses: hashicorp/setup-terraform@v3
+      uses: hashicorp/setup-terraform@v2
+      with:
+        terraform_version: latest
 
     - name: Terraform Init
       run: terraform init
-      working-directory: ./terraform
+
+    - name: Terraform Validate
+      run: terraform validate
+
+    - name: Terraform Plan
+      run: terraform plan -out=tfplan
 
     - name: Terraform Apply
-      run: terraform apply -auto-approve
-      working-directory: ./terraform
-      env:
-        TF_VAR_azure_client_id: ${{ secrets.AZURE_CLIENT_ID }}
-        TF_VAR_azure_client_secret: ${{ secrets.AZURE_CLIENT_SECRET }}
-        TF_VAR_azure_subscription_id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-        TF_VAR_azure_tenant_id: ${{ secrets.AZURE_TENANT_ID }}
-
-    - name: Get AKS Credentials
-      run: |
-        az aks get-credentials --resource-group myResourceGroup --name myAKSCluster --overwrite-existing
-
-    - name: Build Docker Image
-      run: |
-        docker build -t myacr.azurecr.io/myapp:latest ./app
-
-    - name: Login to ACR
-      run: az acr login --name myacr
-
-    - name: Push Docker Image
-      run: |
-        docker push myacr.azurecr.io/myapp:latest
-
-    - name: Deploy to AKS
-      run: |
-        kubectl apply -f manifests/
+      run: terraform apply -auto-approve tfplan

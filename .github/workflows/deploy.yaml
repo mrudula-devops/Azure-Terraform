@@ -1,15 +1,13 @@
-name: Full AKS Deployment
+name: Deploy to Azure AKS
 
 on:
   push:
     branches:
       - main
 
-env:
-  TF_VAR_azure_subscription_id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-  TF_VAR_azure_client_id: ${{ secrets.AZURE_CLIENT_ID }}
-  TF_VAR_azure_client_secret: ${{ secrets.AZURE_CLIENT_SECRET }}
-  TF_VAR_azure_tenant_id: ${{ secrets.AZURE_TENANT_ID }}
+permissions:
+  id-token: write       # Required for OIDC login
+  contents: read        # Required to checkout code
 
 jobs:
   deploy:
@@ -17,7 +15,7 @@ jobs:
 
     steps:
     - name: Checkout Code
-      uses: actions/checkout@v4
+      uses: actions/checkout@v3
 
     - name: Login to Azure
       uses: azure/login@v1
@@ -25,31 +23,39 @@ jobs:
         client-id: ${{ secrets.AZURE_CLIENT_ID }}
         tenant-id: ${{ secrets.AZURE_TENANT_ID }}
         subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+        enable-AzPSSession: true
 
     - name: Set up Terraform
       uses: hashicorp/setup-terraform@v3
 
     - name: Terraform Init
-      working-directory: terraform
       run: terraform init
+      working-directory: ./terraform
 
     - name: Terraform Apply
-      working-directory: terraform
       run: terraform apply -auto-approve
+      working-directory: ./terraform
+      env:
+        TF_VAR_azure_client_id: ${{ secrets.AZURE_CLIENT_ID }}
+        TF_VAR_azure_client_secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+        TF_VAR_azure_subscription_id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+        TF_VAR_azure_tenant_id: ${{ secrets.AZURE_TENANT_ID }}
 
     - name: Get AKS Credentials
       run: |
-        echo "${{ steps.terraform.outputs.kube_config }}" > kubeconfig.yaml
-        export KUBECONFIG=kubeconfig.yaml
+        az aks get-credentials --resource-group myResourceGroup --name myAKSCluster --overwrite-existing
 
-    - name: Build & Push Docker Image
-      uses: docker/build-push-action@v5
-      with:
-        context: .
-        push: true
-        tags: your-dockerhub-username/demo-app:latest
+    - name: Build Docker Image
+      run: |
+        docker build -t myacr.azurecr.io/myapp:latest ./app
+
+    - name: Login to ACR
+      run: az acr login --name myacr
+
+    - name: Push Docker Image
+      run: |
+        docker push myacr.azurecr.io/myapp:latest
 
     - name: Deploy to AKS
       run: |
-        export KUBECONFIG=kubeconfig.yaml
-        kubectl apply -f manifests/deployment.yaml
+        kubectl apply -f manifests/

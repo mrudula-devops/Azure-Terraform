@@ -1,0 +1,55 @@
+name: Full AKS Deployment
+
+on:
+  push:
+    branches:
+      - main
+
+env:
+  TF_VAR_azure_subscription_id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+  TF_VAR_azure_client_id: ${{ secrets.AZURE_CLIENT_ID }}
+  TF_VAR_azure_client_secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+  TF_VAR_azure_tenant_id: ${{ secrets.AZURE_TENANT_ID }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+
+    - name: Login to Azure
+      uses: azure/login@v1
+      with:
+        client-id: ${{ secrets.AZURE_CLIENT_ID }}
+        tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+        subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+    - name: Set up Terraform
+      uses: hashicorp/setup-terraform@v3
+
+    - name: Terraform Init
+      working-directory: terraform
+      run: terraform init
+
+    - name: Terraform Apply
+      working-directory: terraform
+      run: terraform apply -auto-approve
+
+    - name: Get AKS Credentials
+      run: |
+        echo "${{ steps.terraform.outputs.kube_config }}" > kubeconfig.yaml
+        export KUBECONFIG=kubeconfig.yaml
+
+    - name: Build & Push Docker Image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        push: true
+        tags: your-dockerhub-username/demo-app:latest
+
+    - name: Deploy to AKS
+      run: |
+        export KUBECONFIG=kubeconfig.yaml
+        kubectl apply -f manifests/deployment.yaml
